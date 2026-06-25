@@ -141,6 +141,72 @@ canvas {
   align-content: center;
 }
 
+.ultimate-slot {
+  position: relative;
+  min-width: 104px;
+  height: 56px;
+  gap: 2px;
+}
+
+.ultimate-icon {
+  position: relative;
+  width: 82px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(240, 216, 106, 0.42);
+  border-radius: 8px;
+  background: rgba(240, 216, 106, 0.08);
+  box-shadow: inset 0 0 16px rgba(240, 216, 106, 0.08);
+}
+
+.ultimate-icon i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(240, 216, 106, 0.95), rgba(220, 61, 77, 0.86));
+  transform-origin: bottom;
+  transform: scaleY(1);
+  transition: transform 160ms linear;
+}
+
+.ultimate-icon b {
+  position: relative;
+  z-index: 1;
+  color: #101418;
+  font-size: 13px;
+  font-weight: 900;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.ultimate-slot strong {
+  font-size: 11px;
+}
+
+.ultimate-slot.cooling {
+  opacity: 0.72;
+}
+
+.ultimate-slot.cooling .ultimate-icon {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ultimate-slot.cooling .ultimate-icon b {
+  color: #f6f2e8;
+  text-shadow: none;
+}
+
+.ultimate-slot.ready {
+  border-color: rgba(240, 216, 106, 0.48);
+  box-shadow:
+    0 0 0 1px rgba(240, 216, 106, 0.08),
+    0 0 18px rgba(240, 216, 106, 0.2);
+}
+
 .label {
   font-size: 10px;
   color: #9ba7a5;

@@ -5,7 +5,9 @@ const ui = {
   time: document.querySelector("#time"),
   level: document.querySelector("#level"),
   kills: document.querySelector("#kills"),
+  ultimateSlot: document.querySelector("#ultimateSlot"),
   ultimate: document.querySelector("#ultimate"),
+  ultimateFill: document.querySelector("#ultimateFill"),
   skillList: document.querySelector("#skillList"),
   bossHud: document.querySelector("#bossHud"),
   bossName: document.querySelector("#bossName"),
@@ -28,7 +30,7 @@ const world = { w: 3600, h: 2200 };
 const TAU = Math.PI * 2;
 const RUN_TIME = 15 * 60;
 const BOSS_SPAWN_TIMES = [5 * 60, 10 * 60, 15 * 60];
-const ULTIMATE_COOLDOWN = 30;
+const ULTIMATE_COOLDOWN = 60;
 const ULTIMATE_DELAY = 0.65;
 const ULTIMATE_DURATION = 1.25;
 
@@ -808,10 +810,23 @@ function updateUi() {
   ui.time.textContent = formatTime(state.time);
   ui.level.textContent = p.level;
   ui.kills.textContent = state.kills;
-  ui.ultimate.textContent = state.ultimate.cooldown <= 0 ? "READY" : Math.ceil(state.ultimate.cooldown) + "s";
+  updateUltimateUi();
   ui.hpBar.style.width = `${clamp((p.hp / p.maxHp) * 100, 0, 100)}%`;
   ui.xpBar.style.width = `${clamp((p.xp / p.nextXp) * 100, 0, 100)}%`;
   updateBossUi();
+}
+
+function updateUltimateUi() {
+  if (!ui.ultimate || !ui.ultimateFill || !ui.ultimateSlot) return;
+
+  const cooldown = state.ultimate.cooldown;
+  const ready = cooldown <= 0;
+  const charge = ready ? 1 : 1 - cooldown / ULTIMATE_COOLDOWN;
+
+  ui.ultimate.textContent = ready ? "READY" : Math.ceil(cooldown) + "s";
+  ui.ultimateFill.style.transform = `scaleY(${clamp(charge, 0, 1)})`;
+  ui.ultimateSlot.classList.toggle("ready", ready);
+  ui.ultimateSlot.classList.toggle("cooling", !ready);
 }
 
 function updateBossUi() {
