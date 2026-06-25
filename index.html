@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Night Bloom Survivors</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="hud hud-top" aria-label="game status">
+        <div>
+          <span class="label">TIME</span>
+          <strong id="time">00:00</strong>
+        </div>
+        <div>
+          <span class="label">LEVEL</span>
+          <strong id="level">1</strong>
+        </div>
+        <div>
+          <span class="label">KILLS</span>
+          <strong id="kills">0</strong>
+        </div>
+        <div>
+          <span class="label">ULT</span>
+          <strong id="ultimate">READY</strong>
+        </div>
+        <button id="pauseButton" type="button" aria-label="pause">II</button>
+      </section>
+
+      <canvas id="game" width="1280" height="720" aria-label="Night Bloom Survivors game canvas"></canvas>
+
+      <section class="hud hud-bottom" aria-label="player stats">
+        <div class="bar-wrap hp">
+          <span>HP</span>
+          <div class="bar"><i id="hpBar"></i></div>
+        </div>
+        <div class="bar-wrap xp">
+          <span>XP</span>
+          <div class="bar"><i id="xpBar"></i></div>
+        </div>
+      </section>
+
+      <section id="startPanel" class="overlay">
+        <div class="panel">
+          <h1>Night Bloom Survivors</h1>
+          <p>움직이고, 살아남고, 꽃처럼 터지는 무기를 키우세요.</p>
+          <button id="startButton" type="button">시작</button>
+          <small>WASD / 방향키 이동 · Esc 일시정지 · Space 필살기</small>
+        </div>
+      </section>
+
+      <section id="levelPanel" class="overlay hidden">
+        <div class="panel wide">
+          <h2>레벨 업</h2>
+          <div id="upgradeCards" class="upgrade-grid"></div>
+        </div>
+      </section>
+
+      <section id="gameOverPanel" class="overlay hidden">
+        <div class="panel">
+          <h2>런 종료</h2>
+          <p id="resultText"></p>
+          <button id="restartButton" type="button">다시 시작</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>

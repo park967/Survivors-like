@@ -1,0 +1,265 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: #0d1014;
+  color: #f6f2e8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(34, 107, 105, 0.28), transparent 32%),
+    radial-gradient(circle at 82% 70%, rgba(170, 62, 62, 0.18), transparent 36%),
+    linear-gradient(135deg, #0d1014, #171a1d 42%, #11161a);
+}
+
+button {
+  border: 0;
+  color: #101418;
+  background: #f0d86a;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  background: #ffe582;
+}
+
+.game-shell {
+  position: relative;
+  width: min(100vw, 1280px);
+  aspect-ratio: 16 / 9;
+  max-height: 100vh;
+  background: #12161a;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: auto;
+}
+
+.hud {
+  position: absolute;
+  z-index: 3;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.hud-top {
+  top: 14px;
+  justify-content: space-between;
+}
+
+.hud-top > div,
+#pauseButton {
+  min-width: 92px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  background: rgba(12, 16, 19, 0.7);
+  backdrop-filter: blur(12px);
+}
+
+.hud-top > div {
+  align-content: center;
+}
+
+.label {
+  font-size: 10px;
+  color: #9ba7a5;
+  letter-spacing: 0;
+}
+
+strong {
+  font-size: 18px;
+}
+
+#pauseButton {
+  min-width: 44px;
+  color: #f6f2e8;
+  background: rgba(12, 16, 19, 0.7);
+  pointer-events: auto;
+}
+
+.hud-bottom {
+  bottom: 16px;
+  flex-direction: column;
+}
+
+.bar-wrap {
+  width: min(560px, 76vw);
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  align-items: center;
+  gap: 10px;
+  color: #d7dfd9;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.bar {
+  height: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bar i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 120ms linear;
+}
+
+.hp i {
+  background: linear-gradient(90deg, #dc3d4d, #f49b5b);
+}
+
+.xp i {
+  background: linear-gradient(90deg, #2db5a3, #f0d86a);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 8, 10, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.hidden {
+  display: none;
+}
+
+.panel {
+  width: min(420px, 92vw);
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(18, 22, 26, 0.92);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
+  text-align: center;
+}
+
+.panel.wide {
+  width: min(780px, 94vw);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(32px, 5vw, 58px);
+  line-height: 0.95;
+}
+
+h2 {
+  font-size: 30px;
+}
+
+p {
+  margin-top: 14px;
+  color: #c8d0c9;
+}
+
+.panel button {
+  min-width: 156px;
+  min-height: 46px;
+  margin-top: 24px;
+  border-radius: 8px;
+}
+
+small {
+  display: block;
+  margin-top: 18px;
+  color: #92a09d;
+}
+
+.upgrade-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.upgrade-card {
+  min-height: 172px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  color: #f6f2e8;
+  background: #1c2326;
+  text-align: left;
+}
+
+.upgrade-card:hover {
+  background: #253034;
+}
+
+.upgrade-card b {
+  display: block;
+  margin-bottom: 10px;
+  color: #f0d86a;
+  font-size: 17px;
+}
+
+.upgrade-card span {
+  color: #c6d0ca;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .game-shell {
+    width: 100vw;
+    height: 100vh;
+    aspect-ratio: auto;
+  }
+
+  .hud {
+    left: 10px;
+    right: 10px;
+  }
+
+  .hud-top > div {
+    min-width: 72px;
+    padding-inline: 8px;
+  }
+
+  .upgrade-grid {
+    grid-template-columns: 1fr;
+  }
+}
