@@ -33,6 +33,8 @@ const BOSS_SPAWN_TIMES = [5 * 60, 10 * 60, 15 * 60];
 const ULTIMATE_COOLDOWN = 60;
 const ULTIMATE_DELAY = 0.65;
 const ULTIMATE_DURATION = 1.25;
+const FLOWER_START_TIME = 20;
+const FLOWER_DURATION = 10;
 
 const spriteSheet = new Image();
 spriteSheet.src = "assets/sprites.png";
@@ -194,6 +196,9 @@ function newGame() {
     enemies: [],
     shots: [],
     gems: [],
+    pickups: [],
+    flowerPatches: [],
+    nextFlowerTimer: 0,
     bursts: [],
     floaters: [],
     skills: {},
@@ -257,6 +262,8 @@ function update(dt) {
   updateShots(dt);
   updateEnemies(dt);
   updateGems(dt);
+  updatePickups(dt);
+  updateFlowerPatches(dt);
   updateBursts(dt);
   updateFloaters(dt);
   updateUi();
@@ -441,6 +448,7 @@ function damageEnemy(enemy, amount) {
   if (enemy.hp <= 0) {
     state.kills += 1;
     state.gems.push({ x: enemy.x, y: enemy.y, r: 7, xp: enemy.xp, pull: 0 });
+    maybeDropHeal(enemy);
     addBurst(enemy.x, enemy.y, enemy.color, enemy.kind === "boss" ? 80 : enemy.kind === "elite" ? 30 : 16);
     if (enemy.kind === "boss") {
       state.shake = 16;
@@ -451,6 +459,22 @@ function damageEnemy(enemy, amount) {
     }
     if (Math.random() < state.player.bloomChance) bloom(enemy.x, enemy.y);
   }
+}
+
+// 몬스터 처치 시 일정 확률로 회복 픽업을 떨어뜨립니다.
+function maybeDropHeal(enemy) {
+  const chance = enemy.kind === "boss" ? 1 : enemy.kind === "elite" ? 0.20 : enemy.kind === "brute" ? 0.1 : 0.05;
+  if (Math.random() > chance) return;
+
+  const amount = enemy.kind === "boss" ? 55 : enemy.kind === "elite" ? 32 : 20;
+  state.pickups.push({
+    type: "heal",
+    x: enemy.x,
+    y: enemy.y,
+    r: 12,
+    amount,
+    pull: 0,
+  });
 }
 
 // 꽃가루 폭발 효과입니다. 주변 적에게 거리 비례 피해를 줍니다.
@@ -483,6 +507,86 @@ function updateGems(dt) {
     }
   }
   state.gems = state.gems.filter((gem) => !gem.collected);
+}
+
+// 회복 픽업을 끌어당기고, 먹으면 체력을 회복합니다.
+function updatePickups(dt) {
+  const p = state.player;
+  for (const pickup of state.pickups) {
+    const d = distance(pickup, p);
+    if (d < p.pickup) pickup.pull = Math.min(1, pickup.pull + dt * 4);
+    if (pickup.pull > 0) {
+      const angle = Math.atan2(p.y - pickup.y, p.x - pickup.x);
+      const speed = 140 + pickup.pull * 560;
+      pickup.x += Math.cos(angle) * speed * dt;
+      pickup.y += Math.sin(angle) * speed * dt;
+    }
+
+    if (d < p.r + pickup.r) {
+      if (pickup.type === "heal") {
+        const before = p.hp;
+        p.hp = Math.min(p.maxHp, p.hp + pickup.amount);
+        addFloater("+" + Math.round(p.hp - before), p.x, p.y - 66, "#6be68a");
+      }
+      pickup.collected = true;
+    }
+  }
+  state.pickups = state.pickups.filter((pickup) => !pickup.collected);
+}
+
+// 5분 이후 꽃장판 생성/소멸과 필살기 추가 충전을 관리합니다.
+function updateFlowerPatches(dt) {
+  if (state.time < FLOWER_START_TIME) return;
+
+  const p = state.player;
+  if (state.flowerPatches.length === 0) {
+    state.nextFlowerTimer -= dt;
+    if (state.nextFlowerTimer <= 0) spawnFlowerPatch();
+  }
+
+  for (const patch of state.flowerPatches) {
+    patch.life -= dt;
+    patch.pulse += dt;
+    const inside = distance(patch, p) < patch.r + p.r;
+    patch.active = inside;
+
+    if (inside && state.ultimate.cooldown > 0) {
+      state.ultimate.cooldown = Math.max(0, state.ultimate.cooldown - patch.rechargeRate * dt);
+      patch.tick += dt;
+      if (patch.tick >= 1) {
+        patch.tick = 0;
+        addFloater("ULT +" + patch.rechargeRate.toFixed(1), p.x, p.y - 90, "#f0d86a");
+      }
+    }
+  }
+
+  const before = state.flowerPatches.length;
+  state.flowerPatches = state.flowerPatches.filter((patch) => patch.life > 0);
+  if (before > 0 && state.flowerPatches.length === 0) {
+    state.nextFlowerTimer = randomRange(40, 60);
+  }
+}
+
+// 플레이어 주변 일정 거리 밖에 10초짜리 꽃장판을 생성합니다.
+function spawnFlowerPatch() {
+  const p = state.player;
+  const angle = Math.random() * TAU;
+  const dist = randomRange(260, 560);
+  const x = clamp(p.x + Math.cos(angle) * dist, 120, world.w - 120);
+  const y = clamp(p.y + Math.sin(angle) * dist, 120, world.h - 120);
+
+  state.flowerPatches.push({
+    x,
+    y,
+    r: 92,
+    life: FLOWER_DURATION,
+    maxLife: FLOWER_DURATION,
+    rechargeRate: randomRange(1, 2),
+    pulse: 0,
+    tick: 0,
+    active: false,
+  });
+  addFloater("FLOWER FIELD", x, y - 90, "#f0d86a");
 }
 
 // 경험치가 충분할 때 레벨을 올리고 업그레이드 선택 화면을 엽니다.
@@ -629,7 +733,9 @@ function render() {
   ctx.save();
   ctx.translate(-camX, -camY);
 
+  drawFlowerPatches();
   drawGems();
+  drawPickups();
   drawBursts();
   drawShots();
   drawEnemies();
@@ -730,6 +836,58 @@ function drawGems() {
       ctx.fillStyle = "#54d1bd";
       diamond(gem.x, gem.y, gem.r);
     }
+  }
+}
+
+// 회복 픽업을 초록색 하트 모양으로 그립니다.
+function drawPickups() {
+  for (const pickup of state.pickups) {
+    if (pickup.type !== "heal") continue;
+    const bob = Math.sin(state.time * 6 + pickup.x) * 3;
+    ctx.save();
+    ctx.translate(pickup.x, pickup.y + bob);
+    ctx.fillStyle = "#6be68a";
+    ctx.beginPath();
+    ctx.arc(-5, -3, 6, 0, TAU);
+    ctx.arc(5, -3, 6, 0, TAU);
+    ctx.moveTo(-11, 0);
+    ctx.lineTo(0, 13);
+    ctx.lineTo(11, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// 필살기 충전 꽃장판을 바닥에 그립니다.
+function drawFlowerPatches() {
+  for (const patch of state.flowerPatches) {
+    const t = patch.life / patch.maxLife;
+    const pulse = Math.sin(patch.pulse * 5) * 0.06;
+    ctx.save();
+    ctx.globalAlpha = 0.24 + (patch.active ? 0.2 : 0);
+    ctx.fillStyle = patch.active ? "#f0d86a" : "#6be68a";
+    ctx.beginPath();
+    ctx.arc(patch.x, patch.y, patch.r * (1 + pulse), 0, TAU);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = patch.active ? "#f6f2e8" : "#f0d86a";
+    ctx.lineWidth = patch.active ? 4 : 3;
+    ctx.beginPath();
+    ctx.arc(patch.x, patch.y, patch.r, -Math.PI / 2, -Math.PI / 2 + TAU * t);
+    ctx.stroke();
+
+    ctx.fillStyle = "#f6f2e8";
+    for (let i = 0; i < 10; i += 1) {
+      const angle = (i / 10) * TAU + patch.pulse * 0.5;
+      const px = patch.x + Math.cos(angle) * patch.r * 0.55;
+      const py = patch.y + Math.sin(angle) * patch.r * 0.55;
+      ctx.beginPath();
+      ctx.ellipse(px, py, 8, 18, angle, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 }
 
@@ -942,6 +1100,11 @@ function clamp(value, min, max) {
 // 배열에서 무작위 항목을 count개 뽑습니다.
 function sample(list, count) {
   return [...list].sort(() => Math.random() - 0.5).slice(0, count);
+}
+
+// min~max 사이의 무작위 숫자를 반환합니다.
+function randomRange(min, max) {
+  return min + Math.random() * (max - min);
 }
 
 // 초 단위 시간을 MM:SS 문자열로 바꿉니다.
