@@ -155,6 +155,7 @@ const skillCatalog = [
   },
 ];
 
+// 새 게임 상태를 만들고 시작 화면/결과 화면을 숨깁니다.
 function newGame() {
   state = {
     running: true,
@@ -210,6 +211,7 @@ function newGame() {
   lastTime = performance.now();
 }
 
+// 적을 플레이어 주변 바깥쪽에 생성합니다. tier는 보스 단계 구분에 사용합니다.
 function spawnEnemy(kind = "husk", tier = 0) {
   const p = state.player;
   const angle = Math.random() * TAU;
@@ -239,6 +241,7 @@ function spawnEnemy(kind = "husk", tier = 0) {
   state.enemies.push(enemy);
 }
 
+// 매 프레임 게임 상태를 갱신합니다. 이동, 공격, 적, 보석, UI가 여기서 흐릅니다.
 function update(dt) {
   if (!state?.running || state.paused || state.choosing || state.gameOver) return;
 
@@ -259,6 +262,7 @@ function update(dt) {
   updateUi();
 }
 
+// 필살기 쿨타임과 연출 타이밍을 갱신하고, 정해진 순간에 피해를 적용합니다.
 function updateUltimate(dt) {
   const ult = state.ultimate;
   ult.cooldown = Math.max(0, ult.cooldown - dt);
@@ -277,6 +281,7 @@ function updateUltimate(dt) {
   }
 }
 
+// Space 입력으로 필살기를 시작합니다. 쿨타임 중이거나 일시정지 상태면 실행하지 않습니다.
 function castUltimate() {
   if (!state || state.paused || state.choosing || state.gameOver) return;
   const ult = state.ultimate;
@@ -289,6 +294,7 @@ function castUltimate() {
   addFloater("NIGHT BLOOM", state.player.x, state.player.y - 90, "#f0d86a");
 }
 
+// 필살기 연출 후 실제 전체 피해와 폭발 이펙트를 적용합니다.
 function releaseUltimate() {
   const damage = 220 + state.player.level * 12;
   addBurst(state.player.x, state.player.y, "#f6f2e8", 260);
@@ -301,6 +307,7 @@ function releaseUltimate() {
   }
 }
 
+// 키 입력을 읽어 플레이어를 이동시키고 바라보는 방향/이동 상태를 기록합니다.
 function movePlayer(dt) {
   const p = state.player;
   let dx = 0;
@@ -316,6 +323,7 @@ function movePlayer(dt) {
   p.y = clamp(p.y + (dy / len) * p.speed * dt, p.r, world.h - p.r);
 }
 
+// 일반 적, 엘리트, 보스의 등장 타이밍을 관리합니다.
 function spawnLoop(dt) {
   state.spawnTimer -= dt;
   const pressure = Math.min(1.8, 0.55 + state.time / 95);
@@ -350,6 +358,7 @@ function spawnLoop(dt) {
   }
 }
 
+// 공격 쿨타임마다 가까운 적을 향해 자동 투사체를 발사합니다.
 function shootLoop(dt) {
   const p = state.player;
   p.fireTimer -= dt;
@@ -372,6 +381,7 @@ function shootLoop(dt) {
   p.fireTimer = p.fireRate;
 }
 
+// 투사체 이동, 수명 감소, 적과의 충돌 처리를 담당합니다.
 function updateShots(dt) {
   for (const shot of state.shots) {
     shot.x += shot.vx * dt;
@@ -390,6 +400,7 @@ function updateShots(dt) {
   state.shots = state.shots.filter((shot) => shot.life > 0);
 }
 
+// 적을 플레이어 쪽으로 움직이고 접촉 피해, 회전 가시 충돌을 처리합니다.
 function updateEnemies(dt) {
   const p = state.player;
   const orbitAngle = state.time * 2.6;
@@ -422,6 +433,7 @@ function updateEnemies(dt) {
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0);
 }
 
+// 적에게 피해를 주고, 죽었을 때 경험치 보석과 처치 효과를 생성합니다.
 function damageEnemy(enemy, amount) {
   if (enemy.hp <= 0) return;
   enemy.hp -= amount;
@@ -441,6 +453,7 @@ function damageEnemy(enemy, amount) {
   }
 }
 
+// 꽃가루 폭발 효과입니다. 주변 적에게 거리 비례 피해를 줍니다.
 function bloom(x, y) {
   addBurst(x, y, "#f0d86a", 34);
   state.shake = Math.max(state.shake, 4);
@@ -450,6 +463,7 @@ function bloom(x, y) {
   }
 }
 
+// 경험치 보석을 플레이어에게 끌어당기고, 먹었을 때 경험치와 레벨업을 처리합니다.
 function updateGems(dt) {
   const p = state.player;
   for (const gem of state.gems) {
@@ -471,6 +485,7 @@ function updateGems(dt) {
   state.gems = state.gems.filter((gem) => !gem.collected);
 }
 
+// 경험치가 충분할 때 레벨을 올리고 업그레이드 선택 화면을 엽니다.
 function levelUp() {
   const p = state.player;
   p.xp -= p.nextXp;
@@ -481,6 +496,7 @@ function levelUp() {
   showUpgrades();
 }
 
+// 레벨업 선택지 3개를 만들고, 선택 시 해당 스킬 레벨을 올립니다.
 function showUpgrades() {
   ui.upgradeCards.innerHTML = "";
   const available = skillCatalog.filter((skill) => getSkillLevel(skill.id) < skill.maxLevel);
@@ -519,10 +535,12 @@ function showUpgrades() {
   ui.levelPanel.classList.remove("hidden");
 }
 
+// 현재 보유한 특정 스킬의 레벨을 가져옵니다.
 function getSkillLevel(id) {
   return state.skills[id] || 0;
 }
 
+// 선택한 스킬의 레벨을 올리고 실제 능력치 효과를 적용합니다.
 function applySkill(skill) {
   const nextLevel = getSkillLevel(skill.id) + 1;
   state.skills[skill.id] = nextLevel;
@@ -531,6 +549,7 @@ function applySkill(skill) {
   updateSkillUi();
 }
 
+// 왼쪽 SKILLS 패널에 현재 보유 스킬과 레벨을 표시합니다.
 function updateSkillUi() {
   if (!ui.skillList || !state?.skills) return;
   const owned = skillCatalog.filter((skill) => getSkillLevel(skill.id) > 0);
@@ -548,19 +567,23 @@ function updateSkillUi() {
     .join("");
 }
 
+// 원형 폭발 이펙트를 추가합니다.
 function addBurst(x, y, color, size) {
   state.bursts.push({ x, y, color, size, life: 0.42, maxLife: 0.42 });
 }
 
+// 폭발 이펙트의 남은 시간을 줄이고 끝난 이펙트를 제거합니다.
 function updateBursts(dt) {
   for (const burst of state.bursts) burst.life -= dt;
   state.bursts = state.bursts.filter((burst) => burst.life > 0);
 }
 
+// 피해량, 경험치, 보스 알림 같은 떠오르는 텍스트를 추가합니다.
 function addFloater(text, x, y, color) {
   state.floaters.push({ text, x, y, color, life: 0.95 });
 }
 
+// 떠오르는 텍스트를 위로 움직이고 시간이 끝나면 제거합니다.
 function updateFloaters(dt) {
   for (const floater of state.floaters) {
     floater.y -= 42 * dt;
@@ -569,6 +592,7 @@ function updateFloaters(dt) {
   state.floaters = state.floaters.filter((floater) => floater.life > 0);
 }
 
+// 현재 게임 상태를 캔버스에 그립니다. 카메라 계산도 여기서 처리합니다.
 function render() {
   if (!state) {
     drawBackdrop(0, 0);
@@ -618,6 +642,7 @@ function render() {
   if (state.paused && !state.choosing && !state.gameOver) drawCenterText("PAUSED");
 }
 
+// 배경 격자와 작은 장식 점들을 그려 이동감을 만듭니다.
 function drawBackdrop(camX, camY) {
   const viewW = canvas.clientWidth || 1280;
   const viewH = canvas.clientHeight || 720;
@@ -640,6 +665,7 @@ function drawBackdrop(camX, camY) {
   }
 }
 
+// 플레이어 스프라이트, 피격 깜빡임, 경험치 흡수 범위를 그립니다.
 function drawPlayer() {
   const p = state.player;
   ctx.save();
@@ -660,6 +686,7 @@ function drawPlayer() {
   ctx.restore();
 }
 
+// 모든 적 스프라이트와 엘리트/보스 테두리를 그립니다.
 function drawEnemies() {
   for (const enemy of state.enemies) {
     const sprite = enemy.kind === "brute" || enemy.kind === "elite" || enemy.kind === "boss" ? "brute" : "enemy";
@@ -689,11 +716,13 @@ function drawEnemies() {
   }
 }
 
+// 플레이어가 발사한 투사체를 그립니다.
 function drawShots() {
   ctx.fillStyle = "#f0d86a";
   for (const shot of state.shots) circle(shot.x, shot.y, shot.r);
 }
 
+// 경험치 보석을 그립니다. 이미지가 없으면 다이아몬드 모양으로 대체합니다.
 function drawGems() {
   for (const gem of state.gems) {
     const bob = Math.sin(state.time * 5 + gem.x) * 3;
@@ -704,6 +733,7 @@ function drawGems() {
   }
 }
 
+// 폭발 이펙트를 시간에 따라 커지는 원으로 그립니다.
 function drawBursts() {
   for (const burst of state.bursts) {
     const t = 1 - burst.life / burst.maxLife;
@@ -717,6 +747,7 @@ function drawBursts() {
   }
 }
 
+// 플레이어 주변을 도는 회전 가시 무기를 그립니다.
 function drawOrbitals() {
   const p = state.player;
   ctx.fillStyle = "#d7e36b";
@@ -726,6 +757,7 @@ function drawOrbitals() {
   }
 }
 
+// 떠오르는 텍스트 이펙트를 화면에 그립니다.
 function drawFloaters() {
   ctx.textAlign = "center";
   ctx.font = "800 18px Inter, sans-serif";
@@ -737,6 +769,7 @@ function drawFloaters() {
   ctx.globalAlpha = 1;
 }
 
+// 2x2 스프라이트 시트에서 지정한 칸을 잘라 캔버스에 그립니다.
 function drawSprite(name, x, y, width, height, flip = false) {
   if (!spriteSheet.complete || spriteSheet.naturalWidth === 0) return false;
 
@@ -756,6 +789,7 @@ function drawSprite(name, x, y, width, height, flip = false) {
   return true;
 }
 
+// 필살기 사용 중 화면 전체 컷인/충전 연출을 그립니다.
 function drawUltimateOverlay() {
   if (!state?.ultimate?.active) return;
 
@@ -796,6 +830,7 @@ function drawUltimateOverlay() {
   ctx.restore();
 }
 
+// 일시정지 같은 중앙 안내 문구를 어두운 오버레이 위에 그립니다.
 function drawCenterText(text) {
   ctx.fillStyle = "rgba(0,0,0,0.36)";
   ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
@@ -805,6 +840,7 @@ function drawCenterText(text) {
   ctx.fillText(text, canvas.clientWidth / 2, canvas.clientHeight / 2);
 }
 
+// 시간, 레벨, 처치 수, 체력/경험치 바 같은 HUD를 갱신합니다.
 function updateUi() {
   const p = state.player;
   ui.time.textContent = formatTime(state.time);
@@ -816,6 +852,7 @@ function updateUi() {
   updateBossUi();
 }
 
+// 필살기 아이콘의 충전량, READY 상태, 남은 쿨타임 표시를 갱신합니다.
 function updateUltimateUi() {
   if (!ui.ultimate || !ui.ultimateFill || !ui.ultimateSlot) return;
 
@@ -829,6 +866,7 @@ function updateUltimateUi() {
   ui.ultimateSlot.classList.toggle("cooling", !ready);
 }
 
+// 살아있는 보스가 있으면 상단 보스 체력바를 표시하고 갱신합니다.
 function updateBossUi() {
   if (!ui.bossHud) return;
   const boss = state.enemies
@@ -847,6 +885,7 @@ function updateBossUi() {
   ui.bossHpBar.style.width = `${hpPercent}%`;
 }
 
+// 게임을 종료하고 승리/패배 결과 화면을 표시합니다.
 function endGame(won = false) {
   state.gameOver = true;
   state.running = false;
@@ -855,6 +894,7 @@ function endGame(won = false) {
   ui.gameOverPanel.classList.remove("hidden");
 }
 
+// requestAnimationFrame으로 반복 실행되는 메인 루프입니다.
 function loop(now) {
   const dt = Math.min(0.033, (now - lastTime) / 1000 || 0);
   lastTime = now;
@@ -863,12 +903,14 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+// 캔버스에 원을 그리는 보조 함수입니다.
 function circle(x, y, r) {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, TAU);
   ctx.fill();
 }
 
+// 캔버스에 다이아몬드 모양을 그리는 보조 함수입니다.
 function diamond(x, y, r) {
   ctx.beginPath();
   ctx.moveTo(x, y - r);
@@ -879,6 +921,7 @@ function diamond(x, y, r) {
   ctx.fill();
 }
 
+// 캔버스에 선을 그리는 보조 함수입니다.
 function line(x1, y1, x2, y2) {
   ctx.beginPath();
   ctx.moveTo(x1, y1);
@@ -886,18 +929,22 @@ function line(x1, y1, x2, y2) {
   ctx.stroke();
 }
 
+// 두 좌표 사이의 거리를 계산합니다.
 function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+// 값을 최소~최대 범위 안으로 제한합니다.
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+// 배열에서 무작위 항목을 count개 뽑습니다.
 function sample(list, count) {
   return [...list].sort(() => Math.random() - 0.5).slice(0, count);
 }
 
+// 초 단위 시간을 MM:SS 문자열로 바꿉니다.
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = Math.floor(seconds % 60).toString().padStart(2, "0");
