@@ -28,6 +28,14 @@
         <button id="pauseButton" type="button" aria-label="pause">II</button>
       </section>
 
+      <section id="bossHud" class="boss-hud hidden" aria-label="boss status">
+        <div class="boss-row">
+          <span id="bossName">BOSS</span>
+          <strong id="bossHpText">100%</strong>
+        </div>
+        <div class="boss-bar"><i id="bossHpBar"></i></div>
+      </section>
+
       <canvas id="game" width="1280" height="720" aria-label="Night Bloom Survivors game canvas"></canvas>
 
       <section class="hud hud-bottom" aria-label="player stats">
@@ -38,6 +46,13 @@
         <div class="bar-wrap xp">
           <span>XP</span>
           <div class="bar"><i id="xpBar"></i></div>
+        </div>
+      </section>
+
+      <section class="skill-tray" aria-label="owned skills">
+        <h2>SKILLS</h2>
+        <div id="skillList" class="skill-list">
+          <span class="empty-skills">No skills yet</span>
         </div>
       </section>
 

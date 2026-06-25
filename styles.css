@@ -73,6 +73,57 @@ canvas {
   justify-content: space-between;
 }
 
+.boss-hud {
+  position: absolute;
+  z-index: 4;
+  top: 70px;
+  left: 50%;
+  width: min(560px, 72vw);
+  transform: translateX(-50%);
+  padding: 10px 12px 12px;
+  border: 1px solid rgba(240, 216, 106, 0.32);
+  border-radius: 8px;
+  background: rgba(12, 16, 19, 0.78);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(12px);
+}
+
+.boss-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #f6f2e8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.boss-row span {
+  color: #f0d86a;
+}
+
+.boss-row strong {
+  font-size: 13px;
+}
+
+.boss-bar {
+  height: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.boss-bar i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #dc3d4d, #f0d86a);
+  transition: width 120ms linear;
+}
+
 .hud-top > div,
 #pauseButton {
   min-width: 92px;
@@ -110,6 +161,56 @@ strong {
 .hud-bottom {
   bottom: 16px;
   flex-direction: column;
+}
+
+.skill-tray {
+  position: absolute;
+  z-index: 3;
+  top: 72px;
+  left: 16px;
+  width: min(250px, 42vw);
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  background: rgba(12, 16, 19, 0.62);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
+.skill-tray h2 {
+  margin: 0 0 8px;
+  color: #9ba7a5;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.skill-list {
+  display: grid;
+  gap: 6px;
+}
+
+.skill-chip {
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f6f2e8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.skill-chip i {
+  color: #f0d86a;
+  font-style: normal;
+}
+
+.empty-skills {
+  color: #7f8b89;
+  font-size: 12px;
 }
 
 .bar-wrap {
@@ -259,7 +360,17 @@ small {
     padding-inline: 8px;
   }
 
+  .boss-hud {
+    top: 118px;
+    width: calc(100vw - 20px);
+  }
+
   .upgrade-grid {
     grid-template-columns: 1fr;
+  }
+
+  .skill-tray {
+    top: 64px;
+    width: min(230px, 58vw);
   }
 }

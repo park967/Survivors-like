@@ -6,6 +6,11 @@ const ui = {
   level: document.querySelector("#level"),
   kills: document.querySelector("#kills"),
   ultimate: document.querySelector("#ultimate"),
+  skillList: document.querySelector("#skillList"),
+  bossHud: document.querySelector("#bossHud"),
+  bossName: document.querySelector("#bossName"),
+  bossHpText: document.querySelector("#bossHpText"),
+  bossHpBar: document.querySelector("#bossHpBar"),
   hpBar: document.querySelector("#hpBar"),
   xpBar: document.querySelector("#xpBar"),
   startPanel: document.querySelector("#startPanel"),
@@ -22,6 +27,7 @@ const keys = new Set();
 const world = { w: 3600, h: 2200 };
 const TAU = Math.PI * 2;
 const RUN_TIME = 15 * 60;
+const BOSS_SPAWN_TIMES = [5 * 60, 10 * 60, 15 * 60];
 const ULTIMATE_COOLDOWN = 30;
 const ULTIMATE_DELAY = 0.65;
 const ULTIMATE_DURATION = 1.25;
@@ -85,6 +91,68 @@ const upgrades = [
   },
 ];
 
+const skillCatalog = [
+  {
+    id: "seed",
+    title: "불꽃 씨앗",
+    maxLevel: 5,
+    text: (level) => `투사체 피해량 +7 (Lv.${level}/5)`,
+    apply: () => (state.player.damage += 7),
+  },
+  {
+    id: "heart",
+    title: "빠른 심장",
+    maxLevel: 5,
+    text: (level) => `공격 간격 12% 감소 (Lv.${level}/5)`,
+    apply: () => (state.player.fireRate *= 0.88),
+  },
+  {
+    id: "branch",
+    title: "갈래 줄기",
+    maxLevel: 4,
+    text: (level) => `투사체 +1 (Lv.${level}/4)`,
+    apply: () => (state.player.projectiles += 1),
+  },
+  {
+    id: "steps",
+    title: "달빛 발걸음",
+    maxLevel: 4,
+    text: (level) => `이동 속도 +12% (Lv.${level}/4)`,
+    apply: () => (state.player.speed *= 1.12),
+  },
+  {
+    id: "magnet",
+    title: "자석 향기",
+    maxLevel: 4,
+    text: (level) => `경험치 흡수 범위 +45 (Lv.${level}/4)`,
+    apply: () => (state.player.pickup += 45),
+  },
+  {
+    id: "bark",
+    title: "두꺼운 줄기",
+    maxLevel: 5,
+    text: (level) => `최대 체력 +18, 체력 회복 (Lv.${level}/5)`,
+    apply: () => {
+      state.player.maxHp += 18;
+      state.player.hp = Math.min(state.player.maxHp, state.player.hp + 28);
+    },
+  },
+  {
+    id: "thorn",
+    title: "회전 가시",
+    maxLevel: 4,
+    text: (level) => `주변 보호 가시 +1 (Lv.${level}/4)`,
+    apply: () => (state.player.orbitals += 1),
+  },
+  {
+    id: "bloom",
+    title: "꽃가루 폭발",
+    maxLevel: 5,
+    text: (level) => `처치 시 폭발 확률 +8% (Lv.${level}/5)`,
+    apply: () => (state.player.bloomChance += 0.08),
+  },
+];
+
 function newGame() {
   state = {
     running: true,
@@ -95,6 +163,7 @@ function newGame() {
     time: 0,
     spawnTimer: 0,
     eliteTimer: 25,
+    nextBossIndex: 0,
     shake: 0,
     kills: 0,
     player: {
@@ -124,6 +193,7 @@ function newGame() {
     gems: [],
     bursts: [],
     floaters: [],
+    skills: {},
     ultimate: {
       cooldown: 0,
       active: false,
@@ -134,10 +204,11 @@ function newGame() {
   ui.startPanel.classList.add("hidden");
   ui.levelPanel.classList.add("hidden");
   ui.gameOverPanel.classList.add("hidden");
+  updateSkillUi();
   lastTime = performance.now();
 }
 
-function spawnEnemy(kind = "husk") {
+function spawnEnemy(kind = "husk", tier = 0) {
   const p = state.player;
   const angle = Math.random() * TAU;
   const dist = 560 + Math.random() * 260;
@@ -149,9 +220,21 @@ function spawnEnemy(kind = "husk") {
     runner: { hp: 22 + minute * 5, speed: 116 + minute * 4, r: 12, xp: 6, color: "#69b9c8" },
     brute: { hp: 92 + minute * 18, speed: 48 + minute * 2, r: 24, xp: 18, color: "#c46b5b" },
     elite: { hp: 360 + minute * 62, speed: 56 + minute * 2, r: 34, xp: 70, color: "#e0b44f" },
+    boss: {
+      hp: 1450 + minute * 250 + tier * 650,
+      speed: 36 + minute * 1.4,
+      r: 58 + tier * 8,
+      xp: 180 + tier * 90,
+      color: tier >= 3 ? "#f04d6d" : "#9c4df0",
+    },
   };
   const base = types[kind];
-  state.enemies.push({ ...base, x, y, maxHp: base.hp, hit: 0, kind });
+  const enemy = { ...base, x, y, maxHp: base.hp, hit: 0, kind };
+  if (kind === "boss") {
+    enemy.tier = tier;
+    enemy.name = tier >= 3 ? "Final Nightbloom" : tier === 2 ? "Elder Nightbloom" : "Thorn Monarch";
+  }
+  state.enemies.push(enemy);
 }
 
 function update(dt) {
@@ -159,11 +242,6 @@ function update(dt) {
 
   const p = state.player;
   state.time += dt;
-  if (state.time >= RUN_TIME) {
-    endGame(true);
-    updateUi();
-    return;
-  }
   p.invuln = Math.max(0, p.invuln - dt);
   state.shake = Math.max(0, state.shake - dt * 18);
   updateUltimate(dt);
@@ -250,6 +328,18 @@ function spawnLoop(dt) {
     state.spawnTimer = Math.max(0.16, 1.05 - state.time / 180);
   }
 
+  if (
+    state.nextBossIndex < BOSS_SPAWN_TIMES.length &&
+    state.time >= BOSS_SPAWN_TIMES[state.nextBossIndex]
+  ) {
+    const bossTime = BOSS_SPAWN_TIMES[state.nextBossIndex];
+    const bossTier = bossTime >= 15 * 60 ? 3 : bossTime >= 10 * 60 ? 2 : 1;
+    spawnEnemy("boss", bossTier);
+    state.nextBossIndex += 1;
+    state.shake = 12;
+    addFloater(bossTier >= 3 ? "FINAL BOSS" : "BOSS", state.player.x, state.player.y - 100, "#f0d86a");
+  }
+
   state.eliteTimer -= dt;
   if (state.eliteTimer <= 0) {
     spawnEnemy("elite");
@@ -318,10 +408,11 @@ function updateEnemies(dt) {
     }
 
     if (distance(enemy, p) < enemy.r + p.r && p.invuln <= 0) {
-      p.hp -= enemy.kind === "elite" ? 24 : 12;
+      const hitDamage = enemy.kind === "boss" ? 36 : enemy.kind === "elite" ? 24 : 12;
+      p.hp -= hitDamage;
       p.invuln = 0.42;
       state.shake = 8;
-      addFloater("-" + (enemy.kind === "elite" ? 24 : 12), p.x, p.y - 38, "#f07b63");
+      addFloater("-" + hitDamage, p.x, p.y - 38, "#f07b63");
       if (p.hp <= 0) endGame();
     }
   }
@@ -336,7 +427,14 @@ function damageEnemy(enemy, amount) {
   if (enemy.hp <= 0) {
     state.kills += 1;
     state.gems.push({ x: enemy.x, y: enemy.y, r: 7, xp: enemy.xp, pull: 0 });
-    addBurst(enemy.x, enemy.y, enemy.color, enemy.kind === "elite" ? 30 : 16);
+    addBurst(enemy.x, enemy.y, enemy.color, enemy.kind === "boss" ? 80 : enemy.kind === "elite" ? 30 : 16);
+    if (enemy.kind === "boss") {
+      state.shake = 16;
+      addFloater("BOSS DOWN", enemy.x, enemy.y - 80, "#f0d86a");
+      if (enemy.tier >= 3) {
+        endGame(true);
+      }
+    }
     if (Math.random() < state.player.bloomChance) bloom(enemy.x, enemy.y);
   }
 }
@@ -383,13 +481,33 @@ function levelUp() {
 
 function showUpgrades() {
   ui.upgradeCards.innerHTML = "";
-  sample(upgrades, 3).forEach((upgrade) => {
+  const available = skillCatalog.filter((skill) => getSkillLevel(skill.id) < skill.maxLevel);
+  const choices = available.length > 0 ? sample(available, Math.min(3, available.length)) : [];
+
+  if (choices.length === 0) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "upgrade-card";
-    button.innerHTML = `<b>${upgrade.title}</b><span>${upgrade.text}</span>`;
+    button.innerHTML = `<b>만개한 생명력</b><span>모든 스킬이 최대 레벨입니다. 체력을 35 회복합니다.</span>`;
     button.addEventListener("click", () => {
-      upgrade.apply();
+      state.player.hp = Math.min(state.player.maxHp, state.player.hp + 35);
+      state.choosing = false;
+      ui.levelPanel.classList.add("hidden");
+      updateUi();
+    });
+    ui.upgradeCards.append(button);
+    ui.levelPanel.classList.remove("hidden");
+    return;
+  }
+
+  choices.forEach((upgrade) => {
+    const nextLevel = getSkillLevel(upgrade.id) + 1;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "upgrade-card";
+    button.innerHTML = `<b>${upgrade.title}</b><span>${upgrade.text(nextLevel)}</span>`;
+    button.addEventListener("click", () => {
+      applySkill(upgrade);
       state.choosing = false;
       ui.levelPanel.classList.add("hidden");
       updateUi();
@@ -397,6 +515,35 @@ function showUpgrades() {
     ui.upgradeCards.append(button);
   });
   ui.levelPanel.classList.remove("hidden");
+}
+
+function getSkillLevel(id) {
+  return state.skills[id] || 0;
+}
+
+function applySkill(skill) {
+  const nextLevel = getSkillLevel(skill.id) + 1;
+  state.skills[skill.id] = nextLevel;
+  skill.apply(nextLevel);
+  addFloater(`${skill.title} Lv.${nextLevel}`, state.player.x, state.player.y - 72, "#f0d86a");
+  updateSkillUi();
+}
+
+function updateSkillUi() {
+  if (!ui.skillList || !state?.skills) return;
+  const owned = skillCatalog.filter((skill) => getSkillLevel(skill.id) > 0);
+
+  if (owned.length === 0) {
+    ui.skillList.innerHTML = `<span class="empty-skills">No skills yet</span>`;
+    return;
+  }
+
+  ui.skillList.innerHTML = owned
+    .map((skill) => {
+      const level = getSkillLevel(skill.id);
+      return `<div class="skill-chip"><span>${skill.title}</span><i>Lv.${level}/${skill.maxLevel}</i></div>`;
+    })
+    .join("");
 }
 
 function addBurst(x, y, color, size) {
@@ -513,8 +660,8 @@ function drawPlayer() {
 
 function drawEnemies() {
   for (const enemy of state.enemies) {
-    const sprite = enemy.kind === "brute" || enemy.kind === "elite" ? "brute" : "enemy";
-    const size = enemy.r * (enemy.kind === "elite" ? 4.4 : enemy.kind === "brute" ? 4 : 3.5);
+    const sprite = enemy.kind === "brute" || enemy.kind === "elite" || enemy.kind === "boss" ? "brute" : "enemy";
+    const size = enemy.r * (enemy.kind === "boss" ? 4.8 : enemy.kind === "elite" ? 4.4 : enemy.kind === "brute" ? 4 : 3.5);
     const squash = 1 + Math.sin(state.time * enemy.speed * 0.04 + enemy.x) * 0.04;
     const flip = enemy.x > state.player.x;
 
@@ -530,11 +677,11 @@ function drawEnemies() {
       circle(enemy.x - enemy.r * 0.28, enemy.y - enemy.r * 0.18, enemy.r * 0.18);
     }
 
-    if (enemy.kind === "elite") {
-      ctx.strokeStyle = "#f0d86a";
-      ctx.lineWidth = 3;
+    if (enemy.kind === "elite" || enemy.kind === "boss") {
+      ctx.strokeStyle = enemy.kind === "boss" ? "#9c4df0" : "#f0d86a";
+      ctx.lineWidth = enemy.kind === "boss" ? 5 : 3;
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, enemy.r + 7, 0, TAU);
+      ctx.arc(enemy.x, enemy.y, enemy.r + (enemy.kind === "boss" ? 16 : 7), 0, TAU);
       ctx.stroke();
     }
   }
@@ -664,6 +811,25 @@ function updateUi() {
   ui.ultimate.textContent = state.ultimate.cooldown <= 0 ? "READY" : Math.ceil(state.ultimate.cooldown) + "s";
   ui.hpBar.style.width = `${clamp((p.hp / p.maxHp) * 100, 0, 100)}%`;
   ui.xpBar.style.width = `${clamp((p.xp / p.nextXp) * 100, 0, 100)}%`;
+  updateBossUi();
+}
+
+function updateBossUi() {
+  if (!ui.bossHud) return;
+  const boss = state.enemies
+    .filter((enemy) => enemy.kind === "boss" && enemy.hp > 0)
+    .sort((a, b) => b.hp - a.hp)[0];
+
+  if (!boss) {
+    ui.bossHud.classList.add("hidden");
+    return;
+  }
+
+  const hpPercent = clamp((boss.hp / boss.maxHp) * 100, 0, 100);
+  ui.bossHud.classList.remove("hidden");
+  ui.bossName.textContent = boss.name || "BOSS";
+  ui.bossHpText.textContent = `${Math.ceil(hpPercent)}%`;
+  ui.bossHpBar.style.width = `${hpPercent}%`;
 }
 
 function endGame(won = false) {
