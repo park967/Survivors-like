@@ -17,10 +17,13 @@ const ui = {
   xpBar: document.querySelector("#xpBar"),
   startPanel: document.querySelector("#startPanel"),
   levelPanel: document.querySelector("#levelPanel"),
+  pausePanel: document.querySelector("#pausePanel"),
   gameOverPanel: document.querySelector("#gameOverPanel"),
   upgradeCards: document.querySelector("#upgradeCards"),
   resultText: document.querySelector("#resultText"),
   startButton: document.querySelector("#startButton"),
+  resumeButton: document.querySelector("#resumeButton"),
+  pauseRestartButton: document.querySelector("#pauseRestartButton"),
   restartButton: document.querySelector("#restartButton"),
   pauseButton: document.querySelector("#pauseButton"),
 };
@@ -29,12 +32,13 @@ const keys = new Set();
 const world = { w: 3600, h: 2200 };
 const TAU = Math.PI * 2;
 const RUN_TIME = 15 * 60;
-const BOSS_SPAWN_TIMES = [5 * 60, 10 * 60, 15 * 60];
+const BOSS_SPAWN_TIMES = [0, 20, 40];
 const ULTIMATE_COOLDOWN = 60;
 const ULTIMATE_DELAY = 0.65;
 const ULTIMATE_DURATION = 1.25;
 const FLOWER_START_TIME = 20;
 const FLOWER_DURATION = 10;
+const BOSS_WARNING_COLOR = "#ff3b45";
 
 const spriteSheet = new Image();
 spriteSheet.src = "assets/sprites.png";
@@ -171,6 +175,7 @@ function newGame() {
     nextBossIndex: 0,
     shake: 0,
     kills: 0,
+    upgradeSelection: 0,
     player: {
       x: world.w / 2,
       y: world.h / 2,
@@ -198,6 +203,9 @@ function newGame() {
     gems: [],
     pickups: [],
     flowerPatches: [],
+    bossTelegraphs: [],
+    bossShots: [],
+    bossHazards: [],
     nextFlowerTimer: 0,
     bursts: [],
     floaters: [],
@@ -211,6 +219,7 @@ function newGame() {
   };
   ui.startPanel.classList.add("hidden");
   ui.levelPanel.classList.add("hidden");
+  ui.pausePanel.classList.add("hidden");
   ui.gameOverPanel.classList.add("hidden");
   updateSkillUi();
   lastTime = performance.now();
@@ -242,6 +251,8 @@ function spawnEnemy(kind = "husk", tier = 0) {
   if (kind === "boss") {
     enemy.tier = tier;
     enemy.name = tier >= 3 ? "Final Nightbloom" : tier === 2 ? "Elder Nightbloom" : "Thorn Monarch";
+    enemy.attackCooldown = randomRange(2.2, 3.2);
+    enemy.patternStep = 0;
   }
   state.enemies.push(enemy);
 }
@@ -261,6 +272,10 @@ function update(dt) {
   shootLoop(dt);
   updateShots(dt);
   updateEnemies(dt);
+  updateBossAttacks(dt);
+  updateBossTelegraphs(dt);
+  updateBossShots(dt);
+  updateBossHazards(dt);
   updateGems(dt);
   updatePickups(dt);
   updateFlowerPatches(dt);
@@ -349,8 +364,7 @@ function spawnLoop(dt) {
     state.nextBossIndex < BOSS_SPAWN_TIMES.length &&
     state.time >= BOSS_SPAWN_TIMES[state.nextBossIndex]
   ) {
-    const bossTime = BOSS_SPAWN_TIMES[state.nextBossIndex];
-    const bossTier = bossTime >= 15 * 60 ? 3 : bossTime >= 10 * 60 ? 2 : 1;
+    const bossTier = state.nextBossIndex + 1;
     spawnEnemy("boss", bossTier);
     state.nextBossIndex += 1;
     state.shake = 12;
@@ -414,8 +428,11 @@ function updateEnemies(dt) {
 
   for (const enemy of state.enemies) {
     const angle = Math.atan2(p.y - enemy.y, p.x - enemy.x);
-    enemy.x += Math.cos(angle) * enemy.speed * dt;
-    enemy.y += Math.sin(angle) * enemy.speed * dt;
+    const casting = enemy.kind === "boss" && state.bossTelegraphs.some((telegraph) => telegraph.boss === enemy);
+    if (!casting) {
+      enemy.x += Math.cos(angle) * enemy.speed * dt;
+      enemy.y += Math.sin(angle) * enemy.speed * dt;
+    }
     enemy.hit = Math.max(0, enemy.hit - dt * 8);
 
     for (let i = 0; i < p.orbitals; i += 1) {
@@ -429,11 +446,7 @@ function updateEnemies(dt) {
 
     if (distance(enemy, p) < enemy.r + p.r && p.invuln <= 0) {
       const hitDamage = enemy.kind === "boss" ? 36 : enemy.kind === "elite" ? 24 : 12;
-      p.hp -= hitDamage;
-      p.invuln = 0.42;
-      state.shake = 8;
-      addFloater("-" + hitDamage, p.x, p.y - 38, "#f07b63");
-      if (p.hp <= 0) endGame();
+      damagePlayer(hitDamage);
     }
   }
 
@@ -441,6 +454,172 @@ function updateEnemies(dt) {
 }
 
 // 적에게 피해를 주고, 죽었을 때 경험치 보석과 처치 효과를 생성합니다.
+function updateBossAttacks(dt) {
+  const bosses = state.enemies.filter((enemy) => enemy.kind === "boss" && enemy.hp > 0);
+  for (const boss of bosses) {
+    boss.attackCooldown -= dt;
+    if (boss.attackCooldown > 0) continue;
+
+    if (boss.tier >= 3) {
+      if (boss.patternStep % 2 === 0) warnBossDash(boss);
+      else warnBossVolley(boss, 9, 0.22, 1.05);
+      boss.attackCooldown = 2.4;
+    } else if (boss.tier === 2) {
+      warnBossFields(boss);
+      boss.attackCooldown = 3.1;
+    } else {
+      warnBossVolley(boss, 5, 0.26, 0.65);
+      boss.attackCooldown = 2.45;
+    }
+    boss.patternStep += 1;
+  }
+}
+
+function warnBossVolley(boss, count, spread, windup) {
+  const baseAngle = Math.atan2(state.player.y - boss.y, state.player.x - boss.x);
+  const start = -(count - 1) / 2;
+  const lines = [];
+  for (let i = 0; i < count; i += 1) {
+    const angle = baseAngle + (start + i) * spread;
+    lines.push({
+      x1: boss.x,
+      y1: boss.y,
+      x2: boss.x + Math.cos(angle) * 720,
+      y2: boss.y + Math.sin(angle) * 720,
+      angle,
+    });
+  }
+  state.bossTelegraphs.push({ type: "volley", boss, lines, age: 0, windup });
+}
+
+function warnBossFields(boss) {
+  const p = state.player;
+  const circles = [{ x: p.x, y: p.y, r: 96 }];
+  for (let i = 0; i < 4; i += 1) {
+    const angle = (i / 4) * TAU + randomRange(-0.25, 0.25);
+    circles.push({
+      x: clamp(p.x + Math.cos(angle) * 155, 80, world.w - 80),
+      y: clamp(p.y + Math.sin(angle) * 155, 80, world.h - 80),
+      r: 78,
+    });
+  }
+  state.bossTelegraphs.push({ type: "fields", boss, circles, age: 0, windup: 1.25 });
+}
+
+function warnBossDash(boss) {
+  const angle = Math.atan2(state.player.y - boss.y, state.player.x - boss.x);
+  const length = 620;
+  const width = 104;
+  const endX = clamp(boss.x + Math.cos(angle) * length, boss.r, world.w - boss.r);
+  const endY = clamp(boss.y + Math.sin(angle) * length, boss.r, world.h - boss.r);
+  state.bossTelegraphs.push({
+    type: "dash",
+    boss,
+    x1: boss.x,
+    y1: boss.y,
+    x2: endX,
+    y2: endY,
+    width,
+    age: 0,
+    windup: 1,
+  });
+}
+
+function updateBossTelegraphs(dt) {
+  for (const telegraph of state.bossTelegraphs) {
+    telegraph.age += dt;
+    if (telegraph.age < telegraph.windup) continue;
+    if (!telegraph.boss || telegraph.boss.hp <= 0) {
+      telegraph.done = true;
+      continue;
+    }
+
+    if (telegraph.type === "volley") fireBossVolley(telegraph);
+    if (telegraph.type === "fields") activateBossFields(telegraph);
+    if (telegraph.type === "dash") fireBossDash(telegraph);
+    telegraph.done = true;
+  }
+  state.bossTelegraphs = state.bossTelegraphs.filter((telegraph) => !telegraph.done);
+}
+
+function fireBossVolley(telegraph) {
+  const tier = telegraph.boss.tier || 1;
+  for (const ray of telegraph.lines) {
+    state.bossShots.push({
+      x: telegraph.boss.x,
+      y: telegraph.boss.y,
+      vx: Math.cos(ray.angle) * (250 + tier * 45),
+      vy: Math.sin(ray.angle) * (250 + tier * 45),
+      r: 12 + tier,
+      life: 3.2,
+      damage: 14 + tier * 5,
+    });
+  }
+}
+
+function activateBossFields(telegraph) {
+  for (const circle of telegraph.circles) {
+    state.bossHazards.push({
+      ...circle,
+      life: 1.35,
+      maxLife: 1.35,
+      tick: 0,
+      damagePerTick: 16,
+    });
+    addBurst(circle.x, circle.y, BOSS_WARNING_COLOR, circle.r);
+  }
+}
+
+function fireBossDash(telegraph) {
+  const p = state.player;
+  if (distanceToSegment(p, telegraph.x1, telegraph.y1, telegraph.x2, telegraph.y2) < telegraph.width / 2 + p.r) {
+    damagePlayer(34);
+  }
+  telegraph.boss.x = telegraph.x2;
+  telegraph.boss.y = telegraph.y2;
+  state.shake = Math.max(state.shake, 14);
+  addBurst(telegraph.x2, telegraph.y2, BOSS_WARNING_COLOR, 72);
+}
+
+function updateBossShots(dt) {
+  const p = state.player;
+  for (const shot of state.bossShots) {
+    shot.x += shot.vx * dt;
+    shot.y += shot.vy * dt;
+    shot.life -= dt;
+    if (distance(shot, p) < shot.r + p.r) {
+      damagePlayer(shot.damage);
+      shot.life = 0;
+    }
+  }
+  state.bossShots = state.bossShots.filter(
+    (shot) => shot.life > 0 && shot.x > -80 && shot.x < world.w + 80 && shot.y > -80 && shot.y < world.h + 80
+  );
+}
+
+function updateBossHazards(dt) {
+  const p = state.player;
+  for (const hazard of state.bossHazards) {
+    hazard.life -= dt;
+    hazard.tick -= dt;
+    if (hazard.tick <= 0 && distance(hazard, p) < hazard.r + p.r) {
+      damagePlayer(hazard.damagePerTick);
+      hazard.tick = 0.42;
+    }
+  }
+  state.bossHazards = state.bossHazards.filter((hazard) => hazard.life > 0);
+}
+
+function damagePlayer(amount) {
+  const p = state.player;
+  if (p.invuln > 0 || state.gameOver) return;
+  p.hp -= amount;
+  p.invuln = 0.42;
+  state.shake = Math.max(state.shake, 8);
+  addFloater("-" + amount, p.x, p.y - 38, "#f07b63");
+  if (p.hp <= 0) endGame();
+}
+
 function damageEnemy(enemy, amount) {
   if (enemy.hp <= 0) return;
   enemy.hp -= amount;
@@ -603,6 +782,7 @@ function levelUp() {
 // 레벨업 선택지 3개를 만들고, 선택 시 해당 스킬 레벨을 올립니다.
 function showUpgrades() {
   ui.upgradeCards.innerHTML = "";
+  state.upgradeSelection = 0;
   const available = skillCatalog.filter((skill) => getSkillLevel(skill.id) < skill.maxLevel);
   const choices = available.length > 0 ? sample(available, Math.min(3, available.length)) : [];
 
@@ -610,36 +790,85 @@ function showUpgrades() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "upgrade-card";
+    button.dataset.upgradeIndex = "0";
     button.innerHTML = `<b>만개한 생명력</b><span>모든 스킬이 최대 레벨입니다. 체력을 35 회복합니다.</span>`;
     button.addEventListener("click", () => {
       state.player.hp = Math.min(state.player.maxHp, state.player.hp + 35);
-      state.choosing = false;
-      ui.levelPanel.classList.add("hidden");
-      updateUi();
+      closeUpgradePanel();
     });
     ui.upgradeCards.append(button);
     ui.levelPanel.classList.remove("hidden");
+    focusUpgradeCard(0);
     return;
   }
 
-  choices.forEach((upgrade) => {
+  choices.forEach((upgrade, index) => {
     const nextLevel = getSkillLevel(upgrade.id) + 1;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "upgrade-card";
+    button.dataset.upgradeIndex = String(index);
     button.innerHTML = `<b>${upgrade.title}</b><span>${upgrade.text(nextLevel)}</span>`;
     button.addEventListener("click", () => {
       applySkill(upgrade);
-      state.choosing = false;
-      ui.levelPanel.classList.add("hidden");
-      updateUi();
+      closeUpgradePanel();
     });
     ui.upgradeCards.append(button);
   });
   ui.levelPanel.classList.remove("hidden");
+  focusUpgradeCard(0);
 }
 
 // 현재 보유한 특정 스킬의 레벨을 가져옵니다.
+function closeUpgradePanel() {
+  state.choosing = false;
+  ui.levelPanel.classList.add("hidden");
+  updateUi();
+}
+
+function getUpgradeCards() {
+  return [...ui.upgradeCards.querySelectorAll(".upgrade-card")];
+}
+
+function focusUpgradeCard(index) {
+  const cards = getUpgradeCards();
+  if (cards.length === 0) return;
+  state.upgradeSelection = (index + cards.length) % cards.length;
+  cards.forEach((card, i) => card.classList.toggle("selected", i === state.upgradeSelection));
+  cards[state.upgradeSelection].focus({ preventScroll: true });
+}
+
+function handleUpgradeKeys(event) {
+  const cards = getUpgradeCards();
+  if (!state?.choosing || cards.length === 0) return false;
+
+  if (event.code === "ArrowLeft" || event.code === "ArrowUp" || event.code === "KeyA" || event.code === "KeyW") {
+    focusUpgradeCard(state.upgradeSelection - 1);
+  } else if (
+    event.code === "ArrowRight" ||
+    event.code === "ArrowDown" ||
+    event.code === "KeyD" ||
+    event.code === "KeyS" ||
+    (event.code === "Tab" && !event.shiftKey)
+  ) {
+    focusUpgradeCard(state.upgradeSelection + 1);
+  } else if (event.code === "Tab" && event.shiftKey) {
+    focusUpgradeCard(state.upgradeSelection - 1);
+  } else if (event.code === "Enter" || event.code === "Space") {
+    cards[state.upgradeSelection].click();
+  } else if (event.code.startsWith("Digit") || event.code.startsWith("Numpad")) {
+    const number = Number(event.code.replace("Digit", "").replace("Numpad", ""));
+    if (number < 1 || number > cards.length) return false;
+    focusUpgradeCard(number - 1);
+    cards[number - 1].click();
+  } else {
+    return false;
+  }
+
+  event.preventDefault();
+  return true;
+}
+
 function getSkillLevel(id) {
   return state.skills[id] || 0;
 }
@@ -734,9 +963,12 @@ function render() {
   ctx.translate(-camX, -camY);
 
   drawFlowerPatches();
+  drawBossTelegraphs();
+  drawBossHazards();
   drawGems();
   drawPickups();
   drawBursts();
+  drawBossShots();
   drawShots();
   drawEnemies();
   drawOrbitals();
@@ -892,6 +1124,81 @@ function drawFlowerPatches() {
 }
 
 // 폭발 이펙트를 시간에 따라 커지는 원으로 그립니다.
+function drawBossTelegraphs() {
+  for (const telegraph of state.bossTelegraphs) {
+    const t = clamp(telegraph.age / telegraph.windup, 0, 1);
+    const alpha = 0.18 + t * 0.38;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 59, 69, ${alpha + 0.25})`;
+    ctx.fillStyle = `rgba(255, 59, 69, ${alpha})`;
+    ctx.lineWidth = 3 + t * 3;
+
+    if (telegraph.type === "volley") {
+      for (const ray of telegraph.lines) {
+        line(ray.x1, ray.y1, ray.x2, ray.y2);
+      }
+    }
+
+    if (telegraph.type === "fields") {
+      for (const circle of telegraph.circles) {
+        ctx.beginPath();
+        ctx.arc(circle.x, circle.y, circle.r, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    if (telegraph.type === "dash") {
+      drawWarningCapsule(telegraph.x1, telegraph.y1, telegraph.x2, telegraph.y2, telegraph.width);
+    }
+    ctx.restore();
+  }
+}
+
+function drawBossHazards() {
+  for (const hazard of state.bossHazards) {
+    const t = clamp(hazard.life / hazard.maxLife, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = 0.18 + t * 0.18;
+    ctx.fillStyle = BOSS_WARNING_COLOR;
+    ctx.beginPath();
+    ctx.arc(hazard.x, hazard.y, hazard.r, 0, TAU);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.65;
+    ctx.strokeStyle = "#ff8a92";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(hazard.x, hazard.y, hazard.r * (0.9 + Math.sin(state.time * 15) * 0.04), 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawBossShots() {
+  for (const shot of state.bossShots) {
+    ctx.save();
+    ctx.fillStyle = BOSS_WARNING_COLOR;
+    ctx.shadowColor = BOSS_WARNING_COLOR;
+    ctx.shadowBlur = 12;
+    circle(shot.x, shot.y, shot.r);
+    ctx.restore();
+  }
+}
+
+function drawWarningCapsule(x1, y1, x2, y2, width) {
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  ctx.save();
+  ctx.translate(x1, y1);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.roundRect(0, -width / 2, length, width, width / 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawBursts() {
   for (const burst of state.bursts) {
     const t = 1 - burst.life / burst.maxLife;
@@ -1093,6 +1400,14 @@ function distance(a, b) {
 }
 
 // 값을 최소~최대 범위 안으로 제한합니다.
+function distanceToSegment(point, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy || 1;
+  const t = clamp(((point.x - x1) * dx + (point.y - y1) * dy) / lenSq, 0, 1);
+  return Math.hypot(point.x - (x1 + dx * t), point.y - (y1 + dy * t));
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -1114,10 +1429,18 @@ function formatTime(seconds) {
   return `${m}:${s}`;
 }
 
+function setPaused(paused) {
+  if (!state || state.choosing || state.gameOver) return;
+  state.paused = paused;
+  ui.pausePanel.classList.toggle("hidden", !paused);
+}
+
 window.addEventListener("keydown", (event) => {
+  if (handleUpgradeKeys(event)) return;
+
   keys.add(event.code);
   if (event.code === "Escape" && state && !state.choosing && !state.gameOver) {
-    state.paused = !state.paused;
+    setPaused(!state.paused);
     event.preventDefault();
   }
   if (event.code === "Space") {
@@ -1130,8 +1453,10 @@ window.addEventListener("keyup", (event) => keys.delete(event.code));
 
 ui.startButton.addEventListener("click", newGame);
 ui.restartButton.addEventListener("click", newGame);
+ui.pauseRestartButton.addEventListener("click", newGame);
+ui.resumeButton.addEventListener("click", () => setPaused(false));
 ui.pauseButton.addEventListener("click", () => {
-  if (state && !state.choosing && !state.gameOver) state.paused = !state.paused;
+  if (state && !state.choosing && !state.gameOver) setPaused(!state.paused);
 });
 
 requestAnimationFrame(loop);

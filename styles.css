@@ -370,6 +370,18 @@ p {
   border-radius: 8px;
 }
 
+.pause-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.pause-actions button {
+  margin-top: 0;
+}
+
 small {
   display: block;
   margin-top: 18px;
@@ -395,6 +407,14 @@ small {
 
 .upgrade-card:hover {
   background: #253034;
+}
+
+.upgrade-card:focus-visible,
+.upgrade-card.selected {
+  border-color: #f0d86a;
+  background: #26343a;
+  outline: 3px solid rgba(240, 216, 106, 0.32);
+  outline-offset: 2px;
 }
 
 .upgrade-card b {
