@@ -17,6 +17,7 @@ const ui = {
   xpBar: document.querySelector("#xpBar"),
   startPanel: document.querySelector("#startPanel"),
   levelPanel: document.querySelector("#levelPanel"),
+  upgradeTitle: document.querySelector("#levelPanel h2"),
   pausePanel: document.querySelector("#pausePanel"),
   gameOverPanel: document.querySelector("#gameOverPanel"),
   upgradeCards: document.querySelector("#upgradeCards"),
@@ -32,7 +33,8 @@ const keys = new Set();
 const world = { w: 3600, h: 2200 };
 const TAU = Math.PI * 2;
 const RUN_TIME = 15 * 60;
-const BOSS_SPAWN_TIMES = [0, 20, 40];
+const BOSS_SPAWN_TIMES = [300, 600, 900];
+const BOSS_WARNING_TIME = 5;
 const ULTIMATE_COOLDOWN = 60;
 const ULTIMATE_DELAY = 0.65;
 const ULTIMATE_DURATION = 1.25;
@@ -42,6 +44,14 @@ const BOSS_WARNING_COLOR = "#ff3b45";
 
 const spriteSheet = new Image();
 spriteSheet.src = "assets/sprites.png";
+
+const extraEnemySheet = new Image();
+extraEnemySheet.src = "assets/extra-enemies.png";
+
+const extraEnemyCells = {
+  spitter: { col: 0 },
+  bomber: { col: 1 },
+};
 
 const spriteCells = {
   player: { col: 0, row: 0 },
@@ -173,6 +183,12 @@ function newGame() {
     spawnTimer: 0,
     eliteTimer: 25,
     nextBossIndex: 0,
+    bossWarnings: {},
+    defeatedBossTiers: {},
+    enemyUnlocks: {
+      spitter: false,
+      bomber: false,
+    },
     shake: 0,
     kills: 0,
     upgradeSelection: 0,
@@ -206,6 +222,7 @@ function newGame() {
     bossTelegraphs: [],
     bossShots: [],
     bossHazards: [],
+    enemyShots: [],
     nextFlowerTimer: 0,
     bursts: [],
     floaters: [],
@@ -237,6 +254,8 @@ function spawnEnemy(kind = "husk", tier = 0) {
     husk: { hp: 34 + minute * 8, speed: 68 + minute * 3, r: 15, xp: 7, color: "#9bbf73" },
     runner: { hp: 22 + minute * 5, speed: 116 + minute * 4, r: 12, xp: 6, color: "#69b9c8" },
     brute: { hp: 92 + minute * 18, speed: 48 + minute * 2, r: 24, xp: 18, color: "#c46b5b" },
+    spitter: { hp: 58 + minute * 10, speed: 54 + minute * 2, r: 16, xp: 14, color: "#b66bf0" },
+    bomber: { hp: 72 + minute * 12, speed: 88 + minute * 3, r: 18, xp: 16, color: "#f05d5d" },
     elite: { hp: 360 + minute * 62, speed: 56 + minute * 2, r: 34, xp: 70, color: "#e0b44f" },
     boss: {
       hp: 1450 + minute * 250 + tier * 650,
@@ -253,6 +272,11 @@ function spawnEnemy(kind = "husk", tier = 0) {
     enemy.name = tier >= 3 ? "Final Nightbloom" : tier === 2 ? "Elder Nightbloom" : "Thorn Monarch";
     enemy.attackCooldown = randomRange(2.2, 3.2);
     enemy.patternStep = 0;
+  } else if (kind === "spitter") {
+    enemy.fireTimer = randomRange(0.8, 1.7);
+  } else if (kind === "bomber") {
+    enemy.fuse = 0;
+    enemy.armed = false;
   }
   state.enemies.push(enemy);
 }
@@ -276,6 +300,7 @@ function update(dt) {
   updateBossTelegraphs(dt);
   updateBossShots(dt);
   updateBossHazards(dt);
+  updateEnemyShots(dt);
   updateGems(dt);
   updatePickups(dt);
   updateFlowerPatches(dt);
@@ -347,13 +372,16 @@ function movePlayer(dt) {
 
 // 일반 적, 엘리트, 보스의 등장 타이밍을 관리합니다.
 function spawnLoop(dt) {
+  warnUpcomingBoss();
   state.spawnTimer -= dt;
   const pressure = Math.min(1.8, 0.55 + state.time / 95);
   if (state.spawnTimer <= 0) {
     const count = Math.floor(2 + pressure * 2 + Math.random() * 2);
     for (let i = 0; i < count; i += 1) {
       const roll = Math.random();
-      if (state.time > 75 && roll > 0.78) spawnEnemy("brute");
+      if (state.enemyUnlocks.bomber && roll > 0.88) spawnEnemy("bomber");
+      else if (state.enemyUnlocks.spitter && roll > 0.78) spawnEnemy("spitter");
+      else if (state.time > 75 && roll > 0.78) spawnEnemy("brute");
       else if (state.time > 35 && roll > 0.62) spawnEnemy("runner");
       else spawnEnemy("husk");
     }
@@ -377,6 +405,18 @@ function spawnLoop(dt) {
     state.eliteTimer = 40;
     addFloater("ELITE", state.player.x, state.player.y - 80, "#e0b44f");
   }
+}
+
+function warnUpcomingBoss() {
+  if (state.nextBossIndex >= BOSS_SPAWN_TIMES.length) return;
+  const spawnTime = BOSS_SPAWN_TIMES[state.nextBossIndex];
+  const remaining = spawnTime - state.time;
+  if (remaining > BOSS_WARNING_TIME || remaining <= 0 || state.bossWarnings[state.nextBossIndex]) return;
+
+  state.bossWarnings[state.nextBossIndex] = true;
+  state.shake = Math.max(state.shake, 8);
+  const tier = state.nextBossIndex + 1;
+  addFloater(tier >= 3 ? "FINAL BOSS INCOMING" : "BOSS INCOMING", state.player.x, state.player.y - 110, "#ff3b45");
 }
 
 // 공격 쿨타임마다 가까운 적을 향해 자동 투사체를 발사합니다.
@@ -429,7 +469,11 @@ function updateEnemies(dt) {
   for (const enemy of state.enemies) {
     const angle = Math.atan2(p.y - enemy.y, p.x - enemy.x);
     const casting = enemy.kind === "boss" && state.bossTelegraphs.some((telegraph) => telegraph.boss === enemy);
-    if (!casting) {
+    if (enemy.kind === "spitter") {
+      updateSpitter(enemy, angle, dt);
+    } else if (enemy.kind === "bomber") {
+      updateBomber(enemy, angle, dt);
+    } else if (!casting) {
       enemy.x += Math.cos(angle) * enemy.speed * dt;
       enemy.y += Math.sin(angle) * enemy.speed * dt;
     }
@@ -454,6 +498,56 @@ function updateEnemies(dt) {
 }
 
 // 적에게 피해를 주고, 죽었을 때 경험치 보석과 처치 효과를 생성합니다.
+function updateSpitter(enemy, angle, dt) {
+  const p = state.player;
+  const d = distance(enemy, p);
+  if (d < 300) {
+    enemy.x -= Math.cos(angle) * enemy.speed * 0.75 * dt;
+    enemy.y -= Math.sin(angle) * enemy.speed * 0.75 * dt;
+  } else if (d > 430) {
+    enemy.x += Math.cos(angle) * enemy.speed * dt;
+    enemy.y += Math.sin(angle) * enemy.speed * dt;
+  }
+
+  enemy.fireTimer -= dt;
+  if (enemy.fireTimer <= 0 && d < 620) {
+    state.enemyShots.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(angle) * 245,
+      vy: Math.sin(angle) * 245,
+      r: 9,
+      life: 3,
+      damage: 14,
+      color: "#b66bf0",
+    });
+    enemy.fireTimer = randomRange(1.7, 2.4);
+  }
+}
+
+function updateBomber(enemy, angle, dt) {
+  const p = state.player;
+  const d = distance(enemy, p);
+  enemy.x += Math.cos(angle) * enemy.speed * (enemy.armed ? 1.25 : 1) * dt;
+  enemy.y += Math.sin(angle) * enemy.speed * (enemy.armed ? 1.25 : 1) * dt;
+
+  if (d < 120) enemy.armed = true;
+  if (!enemy.armed) return;
+
+  enemy.fuse += dt;
+  enemy.hit = Math.max(enemy.hit, 0.6 + Math.sin(state.time * 22) * 0.35);
+  if (enemy.fuse >= 0.85 || d < 42) explodeBomber(enemy);
+}
+
+function explodeBomber(enemy) {
+  if (enemy.exploded) return;
+  enemy.exploded = true;
+  enemy.hp = 0;
+  state.shake = Math.max(state.shake, 10);
+  addBurst(enemy.x, enemy.y, "#f05d5d", 74);
+  if (distance(enemy, state.player) < 112) damagePlayer(30);
+}
+
 function updateBossAttacks(dt) {
   const bosses = state.enemies.filter((enemy) => enemy.kind === "boss" && enemy.hp > 0);
   for (const boss of bosses) {
@@ -610,6 +704,22 @@ function updateBossHazards(dt) {
   state.bossHazards = state.bossHazards.filter((hazard) => hazard.life > 0);
 }
 
+function updateEnemyShots(dt) {
+  const p = state.player;
+  for (const shot of state.enemyShots) {
+    shot.x += shot.vx * dt;
+    shot.y += shot.vy * dt;
+    shot.life -= dt;
+    if (distance(shot, p) < shot.r + p.r) {
+      damagePlayer(shot.damage);
+      shot.life = 0;
+    }
+  }
+  state.enemyShots = state.enemyShots.filter(
+    (shot) => shot.life > 0 && shot.x > -80 && shot.x < world.w + 80 && shot.y > -80 && shot.y < world.h + 80
+  );
+}
+
 function damagePlayer(amount) {
   const p = state.player;
   if (p.invuln > 0 || state.gameOver) return;
@@ -634,6 +744,8 @@ function damageEnemy(enemy, amount) {
       addFloater("BOSS DOWN", enemy.x, enemy.y - 80, "#f0d86a");
       if (enemy.tier >= 3) {
         endGame(true);
+      } else {
+        handleBossDefeated(enemy);
       }
     }
     if (Math.random() < state.player.bloomChance) bloom(enemy.x, enemy.y);
@@ -657,6 +769,79 @@ function maybeDropHeal(enemy) {
 }
 
 // 꽃가루 폭발 효과입니다. 주변 적에게 거리 비례 피해를 줍니다.
+function handleBossDefeated(boss) {
+  state.defeatedBossTiers[boss.tier] = true;
+  if (boss.tier === 1 && !state.enemyUnlocks.spitter) {
+    state.enemyUnlocks.spitter = true;
+    addFloater("신규 적: 활 고블린", state.player.x, state.player.y - 96, "#b66bf0");
+  }
+  if (boss.tier === 2 && !state.enemyUnlocks.bomber) {
+    state.enemyUnlocks.bomber = true;
+    addFloater("신규 적: 자폭 고블린", state.player.x, state.player.y - 96, "#f05d5d");
+  }
+  showBossRewards(boss.tier);
+}
+
+function showBossRewards(tier) {
+  state.choosing = true;
+  ui.upgradeCards.innerHTML = "";
+  if (ui.upgradeTitle) ui.upgradeTitle.textContent = "보스 보상";
+  state.upgradeSelection = 0;
+
+  const rewards = sample(getBossRewardOptions(tier), 3);
+  rewards.forEach((reward, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "upgrade-card boss-reward";
+    button.dataset.upgradeIndex = String(index);
+    button.innerHTML = `<b>${reward.title}</b><span>${reward.text}</span>`;
+    button.addEventListener("click", () => {
+      reward.apply();
+      addFloater(reward.title, state.player.x, state.player.y - 80, "#f0d86a");
+      closeUpgradePanel();
+    });
+    ui.upgradeCards.append(button);
+  });
+
+  ui.levelPanel.classList.remove("hidden");
+  focusUpgradeCard(0);
+}
+
+function getBossRewardOptions(tier) {
+  return [
+    {
+      title: "급속 개화",
+      text: "공격 간격 18% 감소",
+      apply: () => (state.player.fireRate *= 0.82),
+    },
+    {
+      title: "쌍둥이 씨앗",
+      text: "투사체 +1",
+      apply: () => (state.player.projectiles += 1),
+    },
+    {
+      title: "강철 수피",
+      text: "최대 체력 +30, 체력 45 회복",
+      apply: () => {
+        state.player.maxHp += 30;
+        state.player.hp = Math.min(state.player.maxHp, state.player.hp + 45);
+      },
+    },
+    {
+      title: "달빛 자석",
+      text: "흡수 범위 +80",
+      apply: () => (state.player.pickup += 80),
+    },
+    {
+      title: tier >= 2 ? "짧은 월식" : "새로운 월식",
+      text: "현재 궁극기 쿨타임 12초 감소",
+      apply: () => {
+        state.ultimate.cooldown = Math.max(0, state.ultimate.cooldown - 12);
+      },
+    },
+  ];
+}
+
 function bloom(x, y) {
   addBurst(x, y, "#f0d86a", 34);
   state.shake = Math.max(state.shake, 4);
@@ -782,6 +967,7 @@ function levelUp() {
 // 레벨업 선택지 3개를 만들고, 선택 시 해당 스킬 레벨을 올립니다.
 function showUpgrades() {
   ui.upgradeCards.innerHTML = "";
+  if (ui.upgradeTitle) ui.upgradeTitle.textContent = "UPGRADE";
   state.upgradeSelection = 0;
   const available = skillCatalog.filter((skill) => getSkillLevel(skill.id) < skill.maxLevel);
   const choices = available.length > 0 ? sample(available, Math.min(3, available.length)) : [];
@@ -823,6 +1009,7 @@ function showUpgrades() {
 function closeUpgradePanel() {
   state.choosing = false;
   ui.levelPanel.classList.add("hidden");
+  if (ui.upgradeTitle) ui.upgradeTitle.textContent = "UPGRADE";
   updateUi();
 }
 
@@ -968,6 +1155,7 @@ function render() {
   drawGems();
   drawPickups();
   drawBursts();
+  drawEnemyShots();
   drawBossShots();
   drawShots();
   drawEnemies();
@@ -977,6 +1165,7 @@ function render() {
 
   ctx.restore();
   drawUltimateOverlay();
+  drawBossSpawnWarning();
   if (state.paused && !state.choosing && !state.gameOver) drawCenterText("PAUSED");
 }
 
@@ -1027,6 +1216,14 @@ function drawPlayer() {
 // 모든 적 스프라이트와 엘리트/보스 테두리를 그립니다.
 function drawEnemies() {
   for (const enemy of state.enemies) {
+    if (enemy.kind === "spitter") {
+      drawSpitter(enemy);
+      continue;
+    }
+    if (enemy.kind === "bomber") {
+      drawBomber(enemy);
+      continue;
+    }
     const sprite = enemy.kind === "brute" || enemy.kind === "elite" || enemy.kind === "boss" ? "brute" : "enemy";
     const size = enemy.r * (enemy.kind === "boss" ? 4.8 : enemy.kind === "elite" ? 4.4 : enemy.kind === "brute" ? 4 : 3.5);
     const squash = 1 + Math.sin(state.time * enemy.speed * 0.04 + enemy.x) * 0.04;
@@ -1055,6 +1252,70 @@ function drawEnemies() {
 }
 
 // 플레이어가 발사한 투사체를 그립니다.
+function drawSpitter(enemy) {
+  if (drawExtraEnemySprite("spitter", enemy.x, enemy.y, enemy.r * 4.6, enemy.r * 4.6, enemy.x > state.player.x)) {
+    return;
+  }
+  ctx.save();
+  const pulse = 1 + Math.sin(state.time * 7 + enemy.x) * 0.08;
+  ctx.translate(enemy.x, enemy.y);
+  ctx.fillStyle = enemy.hit > 0 ? "#ffffff" : "#7b4df0";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, enemy.r * 1.05, enemy.r * 0.9 * pulse, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = "#d8b5ff";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, enemy.r + 5, -0.8, 0.8);
+  ctx.stroke();
+
+  ctx.fillStyle = "#f6f2e8";
+  circle(-5, -3, 3);
+  circle(5, -3, 3);
+  ctx.fillStyle = "#b66bf0";
+  circle(0, 8, 5);
+  ctx.restore();
+}
+
+function drawBomber(enemy) {
+  if (drawExtraEnemySprite("bomber", enemy.x, enemy.y, enemy.r * 4.8, enemy.r * 4.8, enemy.x > state.player.x)) {
+    return;
+  }
+  ctx.save();
+  const armedPulse = enemy.armed ? 0.65 + Math.sin(state.time * 18) * 0.25 : 0;
+  ctx.translate(enemy.x, enemy.y);
+  ctx.fillStyle = enemy.hit > 0 ? "#ffffff" : "#3a2225";
+  ctx.beginPath();
+  ctx.arc(0, 0, enemy.r * (1 + armedPulse * 0.12), 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = enemy.armed ? "#ff3b45" : "#f0d86a";
+  ctx.lineWidth = enemy.armed ? 5 : 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, enemy.r + 5, 0, TAU);
+  ctx.stroke();
+
+  ctx.fillStyle = enemy.armed ? "#ff3b45" : "#f05d5d";
+  circle(0, 0, enemy.r * 0.45);
+  ctx.strokeStyle = "#f6f2e8";
+  ctx.lineWidth = 2;
+  line(-enemy.r * 0.8, 0, enemy.r * 0.8, 0);
+  line(0, -enemy.r * 0.8, 0, enemy.r * 0.8);
+  ctx.restore();
+}
+
+function drawEnemyShots() {
+  for (const shot of state.enemyShots) {
+    ctx.save();
+    ctx.fillStyle = shot.color || "#b66bf0";
+    ctx.shadowColor = shot.color || "#b66bf0";
+    ctx.shadowBlur = 10;
+    circle(shot.x, shot.y, shot.r);
+    ctx.restore();
+  }
+}
+
 function drawShots() {
   ctx.fillStyle = "#f0d86a";
   for (const shot of state.shots) circle(shot.x, shot.y, shot.r);
@@ -1255,6 +1516,24 @@ function drawSprite(name, x, y, width, height, flip = false) {
 }
 
 // 필살기 사용 중 화면 전체 컷인/충전 연출을 그립니다.
+function drawExtraEnemySprite(name, x, y, width, height, flip = false) {
+  if (!extraEnemySheet.complete || extraEnemySheet.naturalWidth === 0) return false;
+
+  const cell = extraEnemyCells[name];
+  if (!cell) return false;
+
+  const frameW = extraEnemySheet.naturalWidth / 2;
+  const frameH = extraEnemySheet.naturalHeight;
+  const sx = cell.col * frameW;
+
+  ctx.save();
+  ctx.translate(x, y);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(extraEnemySheet, sx, 0, frameW, frameH, -width / 2, -height / 2, width, height);
+  ctx.restore();
+  return true;
+}
+
 function drawUltimateOverlay() {
   if (!state?.ultimate?.active) return;
 
@@ -1296,6 +1575,27 @@ function drawUltimateOverlay() {
 }
 
 // 일시정지 같은 중앙 안내 문구를 어두운 오버레이 위에 그립니다.
+function drawBossSpawnWarning() {
+  if (!state || state.nextBossIndex >= BOSS_SPAWN_TIMES.length) return;
+  const remaining = BOSS_SPAWN_TIMES[state.nextBossIndex] - state.time;
+  if (remaining <= 0 || remaining > BOSS_WARNING_TIME) return;
+
+  const viewW = canvas.clientWidth;
+  const viewH = canvas.clientHeight;
+  const pulse = 0.55 + Math.sin(state.time * 12) * 0.18;
+  ctx.save();
+  ctx.fillStyle = `rgba(255, 59, 69, ${0.08 + pulse * 0.05})`;
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ff8a92";
+  ctx.font = "900 24px Inter, sans-serif";
+  ctx.fillText(state.nextBossIndex >= 2 ? "FINAL BOSS APPROACHING" : "BOSS APPROACHING", viewW / 2, 92);
+  ctx.fillStyle = "#f6f2e8";
+  ctx.font = "900 48px Inter, sans-serif";
+  ctx.fillText(Math.ceil(remaining), viewW / 2, 142);
+  ctx.restore();
+}
+
 function drawCenterText(text) {
   ctx.fillStyle = "rgba(0,0,0,0.36)";
   ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);

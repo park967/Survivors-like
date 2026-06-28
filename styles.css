@@ -417,6 +417,11 @@ small {
   outline-offset: 2px;
 }
 
+.upgrade-card.boss-reward {
+  border-color: rgba(240, 216, 106, 0.42);
+  background: #241f27;
+}
+
 .upgrade-card b {
   display: block;
   margin-bottom: 10px;
