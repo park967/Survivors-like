@@ -438,11 +438,9 @@ small {
 
 .touch-controls {
   position: absolute;
-  inset: auto 18px 22px;
+  inset: 0;
   z-index: 4;
   display: none;
-  align-items: end;
-  justify-content: space-between;
   pointer-events: none;
 }
 
@@ -455,10 +453,15 @@ small {
 }
 
 .move-pad {
+  position: fixed;
+  left: 0;
+  top: 0;
   width: 122px;
   height: 122px;
   display: grid;
   place-items: center;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.88);
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 50%;
   background: rgba(12, 16, 19, 0.48);
@@ -466,6 +469,14 @@ small {
     inset 0 0 22px rgba(255, 255, 255, 0.08),
     0 12px 32px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(10px);
+  transition:
+    opacity 80ms ease,
+    transform 80ms ease;
+}
+
+.move-pad.active {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .move-pad i {
@@ -478,6 +489,9 @@ small {
 }
 
 .ultimate-button {
+  position: absolute;
+  right: 18px;
+  bottom: 22px;
   width: 82px;
   height: 82px;
   border: 1px solid rgba(240, 216, 106, 0.44);

@@ -33,7 +33,7 @@ const ui = {
 };
 
 const keys = new Set();
-const touchMove = { id: null, dx: 0, dy: 0 };
+const touchMove = { id: null, dx: 0, dy: 0, centerX: 0, centerY: 0 };
 const world = { w: 3600, h: 2200 };
 const TAU = Math.PI * 2;
 const RUN_TIME = 15 * 60;
@@ -1743,12 +1743,9 @@ function setPaused(paused) {
 
 function updateTouchMove(event) {
   if (!ui.movePad || !ui.moveKnob) return;
-  const rect = ui.movePad.getBoundingClientRect();
-  const radius = rect.width / 2;
-  const centerX = rect.left + radius;
-  const centerY = rect.top + radius;
-  const rawX = event.clientX - centerX;
-  const rawY = event.clientY - centerY;
+  const radius = ui.movePad.offsetWidth / 2;
+  const rawX = event.clientX - touchMove.centerX;
+  const rawY = event.clientY - touchMove.centerY;
   const distance = Math.hypot(rawX, rawY);
   const limited = Math.min(distance, radius);
   const scale = distance > 0 ? limited / distance : 0;
@@ -1764,28 +1761,40 @@ function resetTouchMove() {
   touchMove.id = null;
   touchMove.dx = 0;
   touchMove.dy = 0;
+  touchMove.centerX = 0;
+  touchMove.centerY = 0;
+  if (ui.movePad) ui.movePad.classList.remove("active");
   if (ui.moveKnob) ui.moveKnob.style.transform = "translate(0, 0)";
 }
 
 if (ui.movePad) {
-  ui.movePad.addEventListener("pointerdown", (event) => {
+  canvas.addEventListener("pointerdown", (event) => {
+    if (touchMove.id !== null || event.pointerType === "mouse") return;
+    if (event.clientX > window.innerWidth * 0.68) return;
+    if (state?.choosing || state?.paused || state?.gameOver) return;
+
+    touchMove.centerX = event.clientX;
+    touchMove.centerY = event.clientY;
     touchMove.id = event.pointerId;
-    ui.movePad.setPointerCapture(event.pointerId);
+    ui.movePad.style.left = `${event.clientX}px`;
+    ui.movePad.style.top = `${event.clientY}px`;
+    ui.movePad.classList.add("active");
+    canvas.setPointerCapture(event.pointerId);
     updateTouchMove(event);
     event.preventDefault();
   });
 
-  ui.movePad.addEventListener("pointermove", (event) => {
+  canvas.addEventListener("pointermove", (event) => {
     if (touchMove.id !== event.pointerId) return;
     updateTouchMove(event);
     event.preventDefault();
   });
 
-  ui.movePad.addEventListener("pointerup", (event) => {
+  canvas.addEventListener("pointerup", (event) => {
     if (touchMove.id === event.pointerId) resetTouchMove();
   });
 
-  ui.movePad.addEventListener("pointercancel", (event) => {
+  canvas.addEventListener("pointercancel", (event) => {
     if (touchMove.id === event.pointerId) resetTouchMove();
   });
 }
