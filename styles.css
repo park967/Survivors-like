@@ -491,7 +491,7 @@ small {
   font-weight: 900;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 920px), (hover: none), (pointer: coarse) {
   .game-shell {
     width: 100vw;
     height: 100vh;
