@@ -27,9 +27,13 @@ const ui = {
   pauseRestartButton: document.querySelector("#pauseRestartButton"),
   restartButton: document.querySelector("#restartButton"),
   pauseButton: document.querySelector("#pauseButton"),
+  movePad: document.querySelector("#movePad"),
+  moveKnob: document.querySelector("#moveKnob"),
+  ultimateButton: document.querySelector("#ultimateButton"),
 };
 
 const keys = new Set();
+const touchMove = { id: null, dx: 0, dy: 0 };
 const world = { w: 3600, h: 2200 };
 const TAU = Math.PI * 2;
 const RUN_TIME = 15 * 60;
@@ -363,6 +367,8 @@ function movePlayer(dt) {
   if (keys.has("KeyS") || keys.has("ArrowDown")) dy += 1;
   if (keys.has("KeyA") || keys.has("ArrowLeft")) dx -= 1;
   if (keys.has("KeyD") || keys.has("ArrowRight")) dx += 1;
+  dx += touchMove.dx;
+  dy += touchMove.dy;
   const len = Math.hypot(dx, dy) || 1;
   p.moving = dx !== 0 || dy !== 0;
   if (dx !== 0) p.facing = dx > 0 ? 1 : -1;
@@ -1735,6 +1741,55 @@ function setPaused(paused) {
   ui.pausePanel.classList.toggle("hidden", !paused);
 }
 
+function updateTouchMove(event) {
+  if (!ui.movePad || !ui.moveKnob) return;
+  const rect = ui.movePad.getBoundingClientRect();
+  const radius = rect.width / 2;
+  const centerX = rect.left + radius;
+  const centerY = rect.top + radius;
+  const rawX = event.clientX - centerX;
+  const rawY = event.clientY - centerY;
+  const distance = Math.hypot(rawX, rawY);
+  const limited = Math.min(distance, radius);
+  const scale = distance > 0 ? limited / distance : 0;
+  const knobX = rawX * scale;
+  const knobY = rawY * scale;
+
+  touchMove.dx = radius > 0 ? knobX / radius : 0;
+  touchMove.dy = radius > 0 ? knobY / radius : 0;
+  ui.moveKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+}
+
+function resetTouchMove() {
+  touchMove.id = null;
+  touchMove.dx = 0;
+  touchMove.dy = 0;
+  if (ui.moveKnob) ui.moveKnob.style.transform = "translate(0, 0)";
+}
+
+if (ui.movePad) {
+  ui.movePad.addEventListener("pointerdown", (event) => {
+    touchMove.id = event.pointerId;
+    ui.movePad.setPointerCapture(event.pointerId);
+    updateTouchMove(event);
+    event.preventDefault();
+  });
+
+  ui.movePad.addEventListener("pointermove", (event) => {
+    if (touchMove.id !== event.pointerId) return;
+    updateTouchMove(event);
+    event.preventDefault();
+  });
+
+  ui.movePad.addEventListener("pointerup", (event) => {
+    if (touchMove.id === event.pointerId) resetTouchMove();
+  });
+
+  ui.movePad.addEventListener("pointercancel", (event) => {
+    if (touchMove.id === event.pointerId) resetTouchMove();
+  });
+}
+
 window.addEventListener("keydown", (event) => {
   if (handleUpgradeKeys(event)) return;
 
@@ -1758,5 +1813,11 @@ ui.resumeButton.addEventListener("click", () => setPaused(false));
 ui.pauseButton.addEventListener("click", () => {
   if (state && !state.choosing && !state.gameOver) setPaused(!state.paused);
 });
+if (ui.ultimateButton) {
+  ui.ultimateButton.addEventListener("pointerdown", (event) => {
+    castUltimate();
+    event.preventDefault();
+  });
+}
 
 requestAnimationFrame(loop);
